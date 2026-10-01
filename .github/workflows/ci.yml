@@ -147,14 +147,18 @@ jobs:
        working-directory: ./bastionpass/dist
        if: matrix.target == 'Android'
        run: |
-         apk_files=( *.apk )
-         mkdir ./android_apk
+         python3 -c """
+           import os
+           from pathlib import Path
 
-         for apk_file in '${apk_files[@]}'; do
-           echo 'Moving $apk_file to android_apk...'
-           mv '$apk_file' ./android_apk/
-       
-         done
+           txt_files = []
+
+           for file in os.listdir(os.getcwd()):
+               if Path(file).is_file() and (file.endswith('.apk'): or file.endswith('.aab'))
+                   txt_files.append(Path(file).absolute().as_posix())
+
+                    print(txt_files)
+        """
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
