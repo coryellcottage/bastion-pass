@@ -149,7 +149,7 @@ jobs:
        run: |
          mkdir -p ../android_files
          find . -type f \( -name '*.apk' -o -name '*.aab' \) \
-           -exec cp {} ../release/ \;
+           -exec cp {} ../android_files/ \;
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
