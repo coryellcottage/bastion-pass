@@ -127,4 +127,4 @@
 * Move location of diagnostic step to after code checkout
 * Set working directory for the whole github workflow to ./bastionpass
 * Move APK files to new directory before signing them
-
+* Fix alignment of step moving android APK's to new folder

@@ -144,15 +144,16 @@ jobs:
          field: "tool.briefcase.version"
 
      - name: Copy APK files to separate directory
-     run: |
-       apk_files=( *.apk )
-       mkdir ./android_apk
+       if: matrix.target == 'Android'
+       run: |
+         apk_files=( *.apk )
+         mkdir ./android_apk
 
-       for apk_file in "${apk_files[@]}"; do
-         echo "Moving $apk_file to android_apk..."
-         mv "$apk_file" ./android_apk/
+         for apk_file in '${apk_files[@]}'; do
+           echo 'Moving $apk_file to android_apk...'
+           mv '$apk_file' ./android_apk/
        
-       done
+         done
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
@@ -174,16 +175,16 @@ jobs:
        if: steps.release_tag.outputs.tag == ''
        uses: makethenetgo/actions-create-tag@v1
        with:
-         tag_name: "v${{ steps.bastionpass_version.outputs.value }}"
+         tag_name: 'v${{ steps.bastionpass_version.outputs.value }}'
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
      - name: Create New Bastion Pass Release
        uses: ncipollo/release-action@v1
        with:
-         tag: "v${{ steps.bastionpass_version.outputs.value }}"
+         tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
-         bodyFile: "CHANGELOG"
-         artifacts: "dist/*,android_apk/*"
+         bodyFile: 'CHANGELOG'
+         artifacts: 'dist/*,android_apk/*'
          allowUpdates: true
        
      - name: Prep Logs
@@ -199,7 +200,7 @@ jobs:
        if: failure()
        uses: cinotify/github-action@main
        with:
-         to: "SpyridonCoryell@protonmail.com"
-         subject: "Bastion Pass CI ${{ github.run_number }} Workflow log"
-         body: "Github CI workflow ${{ github.run_number }} for Bastion Pass failed. Attached are all available logs."
-         attachment: "logs.zip"
+         to: 'SpyridonCoryell@protonmail.com'
+         subject: 'Bastion Pass CI ${{ github.run_number }} Workflow log'
+         body: 'Github CI workflow ${{ github.run_number }} for Bastion Pass failed. Attached are all available logs.'
+         attachment: 'logs.zip'
