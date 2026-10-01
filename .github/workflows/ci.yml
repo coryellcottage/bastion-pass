@@ -189,12 +189,11 @@ jobs:
          allowUpdates: true
        
      - name: Prep Logs
-       working-directory: ./bastionpass
        id: prep_logs
        if: failure()
        uses: vimtor/action-zip@v1.2
        with:
-         files: logs/*
+         files: ./bastionpass/logs/*
          dest: logs.zip
 
 
