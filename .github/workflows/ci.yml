@@ -12,6 +12,7 @@ env:
  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 defaults:
+ working-directory: ./bastionpass
  run:
    shell: bash
 
@@ -87,14 +88,12 @@ jobs:
          python -m pip install briefcase --break-system-packages
 
      - name: Setup Environment
-       working-directory: ./bastionpass
        run: |
          # Use GitHub's preinstalled JDK 17 for Android builds
          echo JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME_17_arm64}" | tee -a ${GITHUB_ENV}
          ${{ matrix.pre-command }}
 
      - name: Update briefcase tools
-       working-directory: ./bastionpass
        run: briefcase upgrade --no-input --log
 
      - name: Keyring backends available
@@ -108,7 +107,6 @@ jobs:
          echo $(ls)
 
      - name: Build App
-       working-directory: ./bastionpass
        run: |
          ${{ matrix.briefcase-build-prefix }} \
          briefcase build \
@@ -119,8 +117,6 @@ jobs:
            ${{ matrix.briefcase-build-args }}
 
      - name: Test App
-
-       working-directory: ./bastionpass
        run: |
          ${{ matrix.briefcase-run-prefix }} \
          briefcase run \
@@ -131,7 +127,6 @@ jobs:
            ${{ matrix.briefcase-run-args }}
 
      - name: Package App
-       working-directory: ./bastionpass
        run: |
          ${{ matrix.briefcase-package-prefix }} \
          briefcase package \
@@ -145,14 +140,25 @@ jobs:
        uses: SebRollen/toml-action@v1.2.0
        id: bastionpass_version
        with:
-         file: "bastionpass/pyproject.toml"
+         file: "pyproject.toml"
          field: "tool.briefcase.version"
+
+     - name: Copy APK files to separate directory
+     run: |
+       apk_files=( *.apk )
+       mkdir ./android_apk
+
+       for apk_file in "${apk_files[@]}"; do
+         echo "Moving $apk_file to android_apk..."
+         mv "$apk_file" ./android_apk/
+       
+       done
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
        uses: r0adkll/sign-android-release@v1
        with:
-         releaseDirectory: ./bastionpass/dist/android
+         releaseDirectory: ./dist/android_apk/
          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
          keyStorePassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
@@ -176,8 +182,8 @@ jobs:
        with:
          tag: "v${{ steps.bastionpass_version.outputs.value }}"
          draft: true
-         bodyFile: "bastionpass/CHANGELOG"
-         artifacts: "bastionpass/dist/*"
+         bodyFile: "CHANGELOG"
+         artifacts: "dist/*,android_apk/*"
          allowUpdates: true
        
      - name: Prep Logs
@@ -185,7 +191,7 @@ jobs:
        if: failure()
        uses: vimtor/action-zip@v1.2
        with:
-         files: bastionpass/logs/*
+         files: logs/*
          dest: logs.zip
 
 

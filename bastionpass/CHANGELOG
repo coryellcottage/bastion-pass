@@ -125,3 +125,5 @@
 ## 1.0.0 (30 September 2026)
 * Add diagnostic step to github CI
 * Move location of diagnostic step to after code checkout
+* Set working directory for the whole github workflow to ./bastionpass
+* Move APK files to new directory before signing them
