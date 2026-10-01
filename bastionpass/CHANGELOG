@@ -131,3 +131,4 @@
 
 ## 1.0.0 (01 October 2026)
 * Update path used in step to copy android files to different folder to use consistant file paths
+* Update release creation step to use file path from sign android files step

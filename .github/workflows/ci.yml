@@ -153,6 +153,7 @@ jobs:
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
+       id: bastionpass_sign_step
        uses: r0adkll/sign-android-release@v1
        with:
          releaseDirectory: ./bastionpass/android_files/
@@ -180,7 +181,7 @@ jobs:
          tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
          bodyFile: './bastionpass/CHANGELOG'
-         artifacts: './bastionpass/dist/*,./bastionpass/android_apk/*'
+         artifacts: './bastionpass/dist/*,./bastionpass/android_apk/*, ${{ steps.bastionpass_sign_step.signedReleaseFiles }}'
          allowUpdates: true
        
      - name: Prep Logs
