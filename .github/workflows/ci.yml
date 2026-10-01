@@ -137,11 +137,10 @@ jobs:
            ${{ matrix.briefcase-package-args }}
 
      - name: Prep Release Data
-       working-directory: ./bastionpass
        uses: SebRollen/toml-action@v1.2.0
        id: bastionpass_version
        with:
-         file: "pyproject.toml"
+         file: "./bastionpass/pyproject.toml"
          field: "tool.briefcase.version"
 
      - name: Copy APK files to separate directory
@@ -158,7 +157,6 @@ jobs:
          done
 
      - name: Sign Android APK
-       working-directory: ./bastionpass
        if: matrix.target == 'Android'
        uses: r0adkll/sign-android-release@v1
        with:
@@ -182,13 +180,12 @@ jobs:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
      - name: Create New Bastion Pass Release
-       working-directory: ./bastionpass
        uses: ncipollo/release-action@v1
        with:
          tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
          bodyFile: 'CHANGELOG'
-         artifacts: 'dist/*,android_apk/*'
+         artifacts: './bastionpass/dist/*,./bastionpass/android_apk/*'
          allowUpdates: true
        
      - name: Prep Logs
