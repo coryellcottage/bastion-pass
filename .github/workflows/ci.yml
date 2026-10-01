@@ -181,7 +181,7 @@ jobs:
          tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
          bodyFile: './bastionpass/CHANGELOG'
-         artifacts: './bastionpass/dist/*,./bastionpass/android_apk/*, ${{ steps.bastionpass_sign_step.signedReleaseFiles }}'
+         artifacts: './bastionpass/dist/*,${{ steps.bastionpass_sign_step.signedReleaseFiles }}'
          allowUpdates: true
        
      - name: Prep Logs
