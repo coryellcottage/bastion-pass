@@ -147,7 +147,7 @@ jobs:
        working-directory: ./bastionpass/dist
        if: matrix.target == 'Android'
        run: |
-         python3 -c """
+         python3 -c '''
            import os
            from pathlib import Path
 
@@ -158,7 +158,7 @@ jobs:
                    txt_files.append(Path(file).absolute().as_posix())
 
                     print(txt_files)
-        """
+        '''
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
@@ -197,7 +197,7 @@ jobs:
        if: failure()
        uses: vimtor/action-zip@v1.2
        with:
-         files: ./bastionpass/logs/*
+         files: ./bastionpass/logs/*,logs/*
          dest: logs.zip
 
 
