@@ -143,29 +143,19 @@ jobs:
          file: "bastionpass/pyproject.toml"
          field: "tool.briefcase.version"
 
-- name: Copy APK files to separate directory
-  working-directory: ./bastionpass/dist
-  if: matrix.target == 'Android'
-  run: |
-    python3 -c '''
-        import os
-        from pathlib import Path
-
-        txt_files = []
-        for file in os.listdir(os.getcwd()):
-            if Path(file).is_file() and (file.endswith('.apk') or file.endswith('.aab')):
-                txt_files.append(Path(file).absolute().as_posix())
-                Path(file).rename(os.getcwd(), 'android_files', file.name)
-
-        print(txt_files)
-        '''
-
+     - name: Copy APK files to separate directory
+       working-directory: ./bastionpass/dist
+       if: matrix.target == 'Android'
+       run: |
+         mkdir -p ../android_files
+         find . -type f \( -name '*.apk' -o -name '*.aab' \) \
+           -exec cp {} ../release/ \;
 
      - name: Sign Android APK
        if: matrix.target == 'Android'
        uses: r0adkll/sign-android-release@v1
        with:
-         releaseDirectory: ./android_files/
+         releaseDirectory: ./bastionpass/android_files/
          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
          keyStorePassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
