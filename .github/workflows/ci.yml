@@ -73,12 +73,6 @@ jobs:
              --Xemulator=-no-boot-anim
 
    steps:
-
-     - name: Print PWD and list PWD contents
-       run: |
-         echo $PWD
-         echo $(ls)
-
      - name: Checkout
        uses: actions/checkout@v4
 
@@ -107,6 +101,11 @@ jobs:
        run: |
          pip install keyring --break-system-packages
          keyring --list-backends
+     
+     - name: Print PWD and list PWD contents
+       run: |
+         echo $PWD
+         echo $(ls)
 
      - name: Build App
        working-directory: ./bastionpass
