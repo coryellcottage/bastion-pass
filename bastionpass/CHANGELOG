@@ -121,3 +121,6 @@
 
 ## 1.0.0 (10 September 2026)
 * Add custom package index to installer args for all platforms, not just android
+
+## 1.0.0 (30 September 2026)
+* Add diagnostic step to github CI

@@ -73,6 +73,12 @@ jobs:
              --Xemulator=-no-boot-anim
 
    steps:
+
+     - name: Print PWD and list PWD contents
+       run: |
+         echo $PWD
+         echo $(ls)
+
      - name: Checkout
        uses: actions/checkout@v4
 
