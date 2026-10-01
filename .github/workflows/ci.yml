@@ -184,7 +184,7 @@ jobs:
        with:
          tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
-         bodyFile: 'CHANGELOG'
+         bodyFile: './bastionpass/CHANGELOG'
          artifacts: './bastionpass/dist/*,./bastionpass/android_apk/*'
          allowUpdates: true
        
