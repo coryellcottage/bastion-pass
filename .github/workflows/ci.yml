@@ -140,8 +140,8 @@ jobs:
        uses: SebRollen/toml-action@v1.2.0
        id: bastionpass_version
        with:
-         file: "./bastionpass/pyproject.toml"
-         field: "tool.briefcase.version"
+         file: './bastionpass/pyproject.toml'
+         field: 'tool.briefcase.version'
 
      - name: Copy APK files to separate directory
        working-directory: ./bastionpass/dist
