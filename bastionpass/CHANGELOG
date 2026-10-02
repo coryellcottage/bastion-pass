@@ -133,3 +133,4 @@
 * Update path used in step to copy android files to different folder to use consistant file paths
 * Update release creation step to use file path from sign android files step
 * Update the release creation step so the android files aren't added twice
+* Rearrange paths for release creation so signed android files are added before unsigned files

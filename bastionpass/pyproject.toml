@@ -46,6 +46,7 @@ requires = ["json_repair", "uvicorn", "fastapi", "httpx", "psutil", "keyring", "
 ]
 
 requirement_installer_args = [
+    "-v"
     "--extra-index",
     "https://smallcoder13.github.io/simple",
 ]
