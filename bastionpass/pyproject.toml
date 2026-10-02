@@ -42,7 +42,7 @@ test_sources = [
     "tests",
 ]
 
-requires = ["json_repair", "uvicorn", "fastapi", "httpx", "psutil", "keyring", "cryptography",
+requires = ["json_repair", "uvicorn", "fastapi", "httpx", "psutil", "keyring", "cryptography>=50.0.1",
 ]
 
 requirement_installer_args = [

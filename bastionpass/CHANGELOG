@@ -135,3 +135,4 @@
 * Update the release creation step so the android files aren't added twice
 * Rearrange paths for release creation so signed android files are added before unsigned files
 * Add missing comma to pyproject.toml file
+* Change version of cryptography to version I have wheel files for
