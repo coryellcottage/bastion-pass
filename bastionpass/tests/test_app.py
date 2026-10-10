@@ -1,5 +1,6 @@
 from keyring.errors import NoKeyringError
 from cryptography.fernet import Fernet
+
 from bastionpass.app import BastionPass
 from bastionpass.utils import *
 from pathlib import Path

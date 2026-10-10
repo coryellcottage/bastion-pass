@@ -136,3 +136,6 @@
 * Rearrange paths for release creation so signed android files are added before unsigned files
 * Add missing comma to pyproject.toml file
 * Change version of cryptography to version I have wheel files for
+
+## 1.0.0 (10 October 2026)
+* Change python version of github CI from 3.14 to 3.13
