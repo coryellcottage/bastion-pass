@@ -181,7 +181,7 @@ jobs:
          tag: 'v${{ steps.bastionpass_version.outputs.value }}'
          draft: true
          bodyFile: './bastionpass/CHANGELOG'
-         artifacts: '${{ steps.bastionpass_sign_step.outputs.signedReleaseFiles }},./bastionpass/dist/*'
+         artifacts: '${{ steps.bastionpass_sign_step.outputs.signedReleaseFile }},./bastionpass/dist/*'
          allowUpdates: true
        
      - name: Prep Logs
