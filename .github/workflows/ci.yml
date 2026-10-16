@@ -1,0 +1,203 @@
+name: Create App Artifacts
+on:
+ pull_request:
+
+# Cancel active CI runs for a PR before starting another run
+concurrency:
+ group: ${{ github.workflow}}-${{ github.ref }}
+ cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+ FORCE_COLOR: "1"
+ FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+defaults:
+ run:
+   working-directory: ./bastionpass
+   shell: bash
+
+jobs:
+  ci:
+   name: Test and Package
+   runs-on: ${{ matrix.runs-on }}
+
+   strategy:
+     fail-fast: false
+     matrix:
+       target: [ "Windows", "macOS", "Ubuntu-Latest", "Fedora-Latest", "Android"]
+       include:
+         - target: "Windows"
+           output-format: "app"
+           runs-on: "windows-latest"
+
+         - target: "macOS"
+           output-format: "app"
+           runs-on: "macos-latest"
+
+         - target: "Ubuntu-Latest"
+           platform: "Linux"
+           output-format: "system"
+           runs-on: "ubuntu-latest"
+           pre-command: |
+             sudo apt update -y
+             sudo apt upgrade -y
+             sudo apt install -y socat libgirepository-2.0-dev libcairo2-dev --fix-missing
+           briefcase-run-prefix: "xvfb-run"
+           briefcase-args: "--target ubuntu:latest"
+
+         - target: "Fedora-Latest"
+           platform: "Linux"
+           output-format: "system"
+           runs-on: "ubuntu-latest"
+           pre-command: |
+             sudo apt update -y
+             sudo apt upgrade -y
+             sudo apt install -y socat libgirepository-2.0-dev libcairo2-dev --fix-missing
+           briefcase-run-prefix: "xvfb-run"
+           briefcase-args: "--target fedora:latest"
+
+         - target: "Android"
+           output-format: "Gradle"
+           runs-on: "ubuntu-latest"
+           pre-command: |
+             # Enable KVM permissions for the emulator
+             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+               | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+             sudo udevadm control --reload-rules
+             sudo udevadm trigger --name-match=kvm
+           briefcase-run-args: >-
+             --device '{"avd":"beePhone"}'
+             --shutdown-on-exit
+             --Xemulator=-no-window
+             --Xemulator=-no-snapshot
+             --Xemulator=-no-audio
+             --Xemulator=-no-boot-anim
+
+   steps:
+     - name: Checkout
+       uses: actions/checkout@v4
+
+     - name: Setup Python
+       uses: actions/setup-python@v4
+       with:
+         python-version: "3.14"
+
+     - name: Install Briefcase
+       run: |
+         python -m pip install -U pip setuptools wheel --break-system-packages
+         python -m pip install briefcase --break-system-packages
+
+     - name: Setup Environment
+       run: |
+         # Use GitHub's preinstalled JDK 17 for Android builds
+         echo JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME_17_arm64}" | tee -a ${GITHUB_ENV}
+         ${{ matrix.pre-command }}
+
+     - name: Update briefcase tools
+       run: briefcase upgrade --no-input --log
+
+     - name: Keyring backends available
+       run: |
+         pip install keyring --break-system-packages
+         keyring --list-backends
+     
+     - name: Print PWD and list PWD contents
+       run: |
+         echo $PWD
+         echo $(ls)
+
+     - name: Build App
+       run: |
+         ${{ matrix.briefcase-build-prefix }} \
+         briefcase build \
+           ${{ matrix.platform || matrix.target }} \
+           ${{ matrix.output-format }} \
+           --test --no-input --log \
+           ${{ matrix.briefcase-args }} \
+           ${{ matrix.briefcase-build-args }}
+
+     - name: Test App
+       run: |
+         ${{ matrix.briefcase-run-prefix }} \
+         briefcase run \
+           ${{ matrix.platform || matrix.target }} \
+           ${{ matrix.output-format }} \
+           --test --no-input --log \
+           ${{ matrix.briefcase-args }} \
+           ${{ matrix.briefcase-run-args }}
+
+     - name: Package App
+       run: |
+         ${{ matrix.briefcase-package-prefix }} \
+         briefcase package \
+           ${{ matrix.platform || matrix.target }} \
+           ${{ matrix.output-format }} \
+           --update --adhoc-sign --no-input --log \
+           ${{ matrix.briefcase-args }} \
+           ${{ matrix.briefcase-package-args }}
+
+     - name: Prep Release Data
+       uses: SebRollen/toml-action@v1.2.0
+       id: bastionpass_version
+       with:
+         file: "bastionpass/pyproject.toml"
+         field: "tool.briefcase.version"
+
+     - name: Copy APK files to separate directory
+       working-directory: ./bastionpass/dist
+       if: matrix.target == 'Android'
+       run: |
+         mkdir -p ../android_files
+         find . -type f \( -name '*.apk' -o -name '*.aab' \) \
+           -exec cp {} ../android_files/ \;
+
+     - name: Sign Android APK
+       if: matrix.target == 'Android'
+       id: bastionpass_sign_step
+       uses: r0adkll/sign-android-release@v1
+       with:
+         releaseDirectory: ./bastionpass/android_files/
+         signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+         alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+         keyStorePassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+
+     - name: Check if release tag exists
+       uses: bbonkr/git-tag-check-action@v1
+       id: release_tag
+       with:
+         tag: 'v${{ steps.bastionpass_version.outputs.value }}'
+         github_token: ${{ secrets.GITHUB_TOKEN }}
+
+     - name: Create Tag for new Release
+       if: steps.release_tag.outputs.tag == ''
+       uses: makethenetgo/actions-create-tag@v1
+       with:
+         tag_name: 'v${{ steps.bastionpass_version.outputs.value }}'
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+     - name: Create New Bastion Pass Release
+       uses: ncipollo/release-action@v1
+       with:
+         tag: 'v${{ steps.bastionpass_version.outputs.value }}'
+         draft: true
+         bodyFile: './bastionpass/CHANGELOG'
+         artifacts: '${{ steps.bastionpass_sign_step.outputs.signedReleaseFile }},./bastionpass/dist/*'
+         allowUpdates: true
+       
+     - name: Prep Logs
+       id: prep_logs
+       if: failure()
+       uses: vimtor/action-zip@v1.2
+       with:
+         files: ./bastionpass/logs/*,logs/*
+         dest: logs.zip
+
+
+     - name: Email Logs
+       if: failure()
+       uses: cinotify/github-action@main
+       with:
+         to: 'SpyridonCoryell@protonmail.com'
+         subject: 'Bastion Pass CI ${{ github.run_number }} Workflow log'
+         body: 'Github CI workflow ${{ github.run_number }} for Bastion Pass failed. Attached are all available logs.'
+         attachment: 'logs.zip'
