@@ -139,3 +139,6 @@
 
 ## 1.0.0 (10 October 2026)
 * Change python version of github CI from 3.14 to 3.13
+
+## 1.0.0 (15 October 2026)
+* Revert python version for github CI from 3.13 to 3.14
