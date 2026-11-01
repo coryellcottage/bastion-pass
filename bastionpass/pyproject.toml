@@ -1,8 +1,8 @@
 # This project was generated with 0.4.2 using template: https://github.com/beeware/briefcase-template @ v0.4.2
 [tool.briefcase]
-project_name = "Bastion Pass"
+project_name = "Bastion-Pass"
 bundle = "com.coryellcottage.bastionpass"
-version = "1.0.0"
+version = "1.0.1"
 url = "https://coryellcottage.github.com/bastionpass"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -42,7 +42,7 @@ test_sources = [
     "tests",
 ]
 
-requires = ["json_repair", "uvicorn", "fastapi", "httpx", "psutil", "keyring", "cryptography>=50.0.1",
+requires = ["json_repair", "uvicorn", "fastapi==0.143.3", "httpx", "psutil", "keyring", "cryptography>=50.0.1",
 ]
 
 requirement_installer_args = [
@@ -216,7 +216,7 @@ requires = [
 
 [tool.briefcase.app.bastionpass.android]
 requires = [
-    "pydantic<2",
+    "pydantic",
     "toga-android~=0.5.0",
     "git+https://bitbucket.org/TomArn/tatogalib.git@version_2025-02-26",
 ]

@@ -1,6 +1,11 @@
 """
 A cross-platform password manager written in python
 """
+import datetime
+import functools
+import inspect
+
+import toga
 # import json
 # import random
 
@@ -29,15 +34,15 @@ A cross-platform password manager written in python
 # }
 
 # Window related imports
-import toga
-from click import style
 from toga.style import Pack
 
 # App related imports
+import logging
 import os.path
 import asyncio
 import secrets
 import textwrap
+import traceback
 from .utils import *
 import cryptography.fernet
 from functools import partial
@@ -46,9 +51,7 @@ from queue import Queue, Empty, Full
 from cryptography.fernet import Fernet
 
 # Data migration imports
-# import httpx
 import psutil
-# import multiprocessing
 
 from pprint import pprint as print
 
@@ -58,9 +61,59 @@ if toga.platform.current_platform.lower() == "android" or "window" in toga.platf
 else:
     import pyperclip
 
-# TODO: Fix data migration from bastion pass to bastion pass. Offset of data appears to be scrambled
+def log_function(function):
+    async def wrapper(self, *args, **kwargs):
+        logging.basicConfig(datefmt="%Y.%m.%d %H:%M", filename=Path(self.paths.logs, datetime.datetime.now().strftime(
+            "bastionpass-%m.%d.%Y.log")), level=logging.DEBUG)
+        logger = logging.getLogger(__name__)
+
+        logging.getLogger("asyncio").setLevel(logging.INFO)
+        logging.getLogger("keyring").setLevel(logging.INFO)
+
+        print(f"Logger handlers: {logger.handlers}")
+
+        print(f"self has logger attribute: {hasattr(self, 'logger')} and name is: {function.__name__}")
+
+        if not hasattr(self, "logger"):
+            setattr(self, "logger", logger)
+        try:
+            self.logger.debug(f"Running function {function.__name__}")
+
+            if inspect.iscoroutinefunction(function):
+                output = await function(self, *args, **kwargs)
+
+            else:
+                output = function(self, *args, **kwargs)
+
+        except Warning:
+            self.logger.warning(f"A warning was raised while running {function.__name__}: \n{traceback.format_exc()}")
+
+            dialog = toga.InfoDialog(
+                title=self.question_title,
+                message=f"A warning was raised while running {function.__name__}. It has been saved to the log file"
+            )
+
+
+            await self.dialog(dialog)
+
+        except Exception:
+            self.logger.error(f"An error occurred while running {function.__name__}: \n{traceback.format_exc()}")
+
+            dialog = toga.ErrorDialog(
+                title=self.error_title,
+                message=f"An error occurred while running {function.__name__}. It has been saved to the log file."
+            )
+
+            await self.dialog(dialog)
+
+        else:
+            self.logger.debug(f"Successfully ran {function.__name__}")
+            return output
+
+    return wrapper
 
 class BastionPass(toga.App):
+    @log_function
     async def on_running(self):
         load_env(env_path=Path(self.paths.data, ".env"), env_object=os.environ)
 
@@ -80,7 +133,6 @@ class BastionPass(toga.App):
 
         if toga.platform.current_platform.lower() == "android":
             self.main_fernet = None
-
         else:
             self.main_fernet: Fernet = Fernet(get_main_key())
 
@@ -217,7 +269,8 @@ class BastionPass(toga.App):
             )
         )
 
-        self.return_to_home_screen(logged_in=False)
+        asyncio.run_coroutine_threadsafe(self.return_to_home_screen(logged_in=False), self.loop)
+        self.loop.slow_callback_duration = 0.5
 
         main_scroll = toga.ScrollContainer(content=self.a_box)
 
@@ -231,7 +284,6 @@ class BastionPass(toga.App):
 
         self.paths.data.mkdir(parents=True, exist_ok=True)
         self.paths.logs.mkdir(parents=True, exist_ok=True)
-        # multiprocessing.set_start_method("spawn")
 
         self.main_window = toga.MainWindow(
             title=self.formal_name,
@@ -241,8 +293,7 @@ class BastionPass(toga.App):
         self.main_window.content = main_scroll
         self.main_window.show()
 
-        print(self.paths.cache)
-
+    @log_function
     async def recover_key(self, _):
         if toga.platform.current_platform != "android":
             backup_phrase = self.backup_phrase_entry.value.replace(" ", "").split("/")
@@ -289,14 +340,16 @@ class BastionPass(toga.App):
             await self.dialog(dialog)
             return None
 
-    def return_home_command(self, _=None):
+    @log_function
+    async def return_home_command(self, _=None):
         if hasattr(self, "logged_in_user") and self.logged_in_user != "":
-            self.return_to_home_screen()
+            await self.return_to_home_screen()
 
         else:
-            self.return_to_home_screen(logged_in=False)
+            await self.return_to_home_screen(logged_in=False)
 
-    def return_to_home_screen(self, _=None, logged_in=True):
+    @log_function
+    async def return_to_home_screen(self, _=None, logged_in=True):
         if logged_in:
             service_label = toga.Label(
                 text="Service: ",
@@ -468,7 +521,8 @@ class BastionPass(toga.App):
                 clear_screen=True
             )
 
-    def get_app_details(self, _):
+    @log_function
+    async def get_app_details(self, _):
         data_path_label = toga.Label(
             text=f"The data path for Bastion Pass is: {self.paths.data} \nThe Bundle Identifier is: {self.app_id}",
             style=self.label_style
@@ -499,11 +553,11 @@ class BastionPass(toga.App):
 
     # --------------------- User related functions ---------------------#
 
+    @log_function
     async def login(self, _):
         username: str = self.user_entry.value
         password: str = self.password_entry.value
         username_path = Path(self.paths.data, username)
-
         is_valid = await self.validate_values(
             to_validate={
                 "username": username,
@@ -512,127 +566,105 @@ class BastionPass(toga.App):
             message_for_dialog="<value> cannot be empty",
             inverse_check=True
         )
-
         if not is_valid:
             return None
-
         if not Path(username_path).exists():
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message=f"User {username} doesn't exist"
             )
-
             await self.dialog(
                 dialog
             )
-
             return None
-
         user_data = load_user_data(password_file_path=Path(username_path, ".passwords.json"))
-
         if user_data == "Invalid data saved":
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message="Failed to login. Cannot load user data"
             )
-
             await self.dialog(dialog)
             return None
-
         elif user_data == "Password file path doesn't exist":
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message="Failed to login. User data file doesn't exist"
             )
-
             await self.dialog(dialog)
             return None
-
         try:
             user_password = user_data[username]
-
             if self.main_fernet is None and toga.platform.current_platform.lower() == "android":
                 pass
-
             elif self.main_fernet is None and toga.platform.current_platform.lower() != "android":
                 raise KeyError
-
             else:
                 user_key = self.main_fernet.decrypt(user_data["key"].encode())
-
         except KeyError:
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message=f"Couldn't login to user {username}. No decryption key found"
             )
-
             return await self.dialog(dialog)
-
         except fernet.InvalidToken:
             dialog = toga.ConfirmDialog(
                 title=self.confirm_title,
-                message="An invalid key was saved. Do you want to attempt key recovery? (Requires backup phrase)"
+                message="Login data was corrupt, meaning you have to reset this users password to use it. Do you want to continue?"
             )
-
             dialog_result = await self.dialog(dialog)
-
             if dialog_result:
-                backup_phrase_label = toga.Label(
-                    text="Please enter your backup phrase below, separating each word with '/ ', or paste in the backup "
-                         "phrase that was copied to your clipboard:",
+                password_label = toga.Label(
+                    text="Please enter your new password below:",
                     style=self.label_style
                 )
+                self.password_entry = toga.TextInput(style=self.input_style)
 
-                self.backup_phrase_entry = toga.TextInput(style=self.input_style)
-
-                recover_backup_phrase_button = toga.Button(
-                    text="Recover Key",
-                    on_press=self.recover_key,
+                submit_button = toga.Button(
+                    text="Submit New Password",
+                    on_press=self.reset_password,
                     style=self.button_style
                 )
 
-                return add_to_screen(
+                add_to_screen(
                     widgets_to_add=(
-                        backup_phrase_label,
-                        self.backup_phrase_entry,
-                        recover_backup_phrase_button
+                        password_label,
+                        self.password_entry,
+                        submit_button
                     ),
                     box_to_add_to=self.a_box,
                     clear_screen=True
                 )
 
+            else:
+                dialog = toga.InfoDialog(
+                    title=self.warning_title,
+                    message="You have opted to not restore passwords from another device. You will no longer be able to use this user without password restoration."
+                )
+
+                await self.dialog(dialog)
+
         if toga.platform.current_platform.lower() == "android":
             cipher = None
-
         else:
             cipher = Fernet(user_key)
-
         if user_data == {}:
             dialog = toga.ConfirmDialog(
                 title=self.confirm_title,
                 message="Saved passwords are corrupt. Attempt recovery from different device?"
             )
-
             dialog_result = await self.dialog(dialog)
-
             if dialog_result:
-                pass
-                # TODO: Implement data receiving from different device
-
+                self.get_server_details()
         if toga.platform.current_platform.lower() == "android":
             print("Running data decrypt for android")
             user_data = load_user_data(Path(self.paths.data, username, ".passwords.json"))
-
             decrypted_key = decrypt_data(data_to_decrypt=user_data["key"], iv=user_data["iv"].encode())
-
             print(decrypted_key)
-
             password_correct = check_password(
                 entered_password=password,
                 saved_password=user_password,
                 password_cipher=Fernet(decrypted_key)
             )
-
         else:
             print("Running data decryption normally")
             password_correct = check_password(
@@ -640,24 +672,14 @@ class BastionPass(toga.App):
                 saved_password=user_password,
                 password_cipher=cipher
             )
-
         if password_correct == "Correct password entered":
             from .background_server import BackgroundServer
-
             self.server_queue = Queue()
             self.app_queue = Queue()
-            # app_side, server_side = multiprocessing.Pipe(duplex=True)
-
-            # self.server_loop = self.loop.create_task(
-            #     asyncio.new_event_loop().run_until_complete()
-            # )
-
             self.logged_in_user = username
             self.data_file_path = Path(self.paths.data, self.logged_in_user, ".passwords.json")
             self.cache_file_path = Path(self.paths.cache, self.logged_in_user)
-
             print("Setting up/Starting background server")
-
             self.loop.create_task(
                 asyncio.to_thread(
                     BackgroundServer,
@@ -668,25 +690,21 @@ class BastionPass(toga.App):
                     server_queue=self.server_queue,
                 )
             )
-
-            return self.return_to_home_screen()
-
+            return await self.return_to_home_screen()
         elif password_correct == "Incorrect password entered":
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message="Incorrect password"
             )
-
             return await self.dialog(dialog)
-
         else:
             dialog = toga.ErrorDialog(
                 title=self.error_title,
                 message="Unknown case happened"
             )
-
             return await self.dialog(dialog)
 
+    @log_function
     async def create_user(self, _):
         user = self.user_entry.value
         password = self.password_entry.value
@@ -712,7 +730,7 @@ class BastionPass(toga.App):
 
         else:
             create_user_result = create_new_user(user_data_path=Path(self.paths.data, user), user=user,
-                                                 password=password, main_cipher=self.main_fernet)
+                                                     password=password, main_cipher=self.main_fernet)
 
         if create_user_result == "User already exists":
             dialog = toga.ErrorDialog(
@@ -741,6 +759,7 @@ class BastionPass(toga.App):
             await self.dialog(dialog)
             return None
 
+    @log_function
     async def delete_user(self, _):
         user = self.user_entry.value
         password = self.password_entry.value
@@ -819,7 +838,76 @@ class BastionPass(toga.App):
         return None
 
     # --------------------- Password related functions --------------------- #
+    @log_function
+    async def reset_password(self, _=None):
+        encryption_key = Fernet.generate_key()
+        new_password = self.password_entry.value
+        data_path = Path(self.paths.data, self.user_entry.value, ".passwords.json")
+        user_passwords = load_user_data(password_file_path=data_path)
 
+        if user_passwords == "":
+            dialog = toga.QuestionDialog(
+                title=self.confirm_title,
+                message="Unable to load any of the saved passwords under the selected user. You can still reset your password, but you will lose all your saved passwords. Do you wish to continue?"
+            )
+
+            dialog_result = await self.dialog(dialog)
+
+            if not dialog_result:
+                dialog = toga.InfoDialog(
+                    title=self.warning_title,
+                    message="You have opted to not reset your user password in light of the login data being corrupt. You will not be able to login to this user without resetting the password first"
+                )
+
+                return await self.dialog(dialog)
+
+        elif not isinstance(user_passwords, dict):
+            dialog = toga.ErrorDialog(
+                title=self.error_title,
+                message=f"An unknown case occurred while trying to read the selected user's passwords. The unknown case is: {user_passwords}. Canceling..."
+            )
+
+            await self.dialog(dialog)
+            return self.return_to_home_screen(logged_in=False)
+
+        if new_password == "":
+            dialog = toga.ErrorDialog(
+                title=self.error_title,
+                message="Cannot reset password. New Password not given."
+            )
+
+            return await self.dialog(dialog)
+
+        encrypted_password = encrypt_data(data_to_encrypt=new_password, key_to_use=encryption_key.decode())
+        encrypted_key = encrypt_data(data_to_encrypt=encryption_key)
+
+        if encrypted_key["iv_used"] is None:
+            user_data = {
+                self.user_entry.value: encrypted_password["encrypted_data"].decode(),
+                "key": encrypted_key["encrypted_data"].decode(),
+                "data": user_passwords["data"]
+            }
+
+        else:
+            user_data = {
+                self.user_entry.value: encrypted_password["encrypted_data"].decode(),
+                "key": encrypted_key["encrypted_data"].decode(),
+                "iv": encrypted_key["iv_used"],
+                "data": user_passwords["data"]
+            }
+
+        with open(data_path, mode="w") as passwords_file:
+            json.dump(user_data, passwords_file, indent=4)
+
+        dialog = toga.InfoDialog(
+            title=self.success_title,
+            message="Successfully reset password. You should now be able to login using the new password."
+        )
+
+        await self.dialog(dialog)
+        return self.return_to_home_screen(logged_in=False)
+
+    @log_function
     async def add_password(self, _):
         service = self.service_entry.value
         username = self.username_entry.value
@@ -860,6 +948,7 @@ class BastionPass(toga.App):
             message_for_dialog="<value> cannot be empty",
             inverse_check=True
         )
+
         if not is_valid:
             return None
 
@@ -907,7 +996,7 @@ class BastionPass(toga.App):
                 user_data["data"][service][username] = {
                     "password": cipher.encrypt(password.encode()).decode(),
                     "key": self.main_fernet.encrypt(password_key).decode()
-                }
+                    }
 
         with open(self.data_file_path, mode="w") as data_file:
             json.dump(user_data, data_file, indent=4)
@@ -929,6 +1018,7 @@ class BastionPass(toga.App):
         await self.dialog(dialog)
         return None
 
+    @log_function
     async def edit_password(self, _):
         new_password = self.service_password_entry.value
         username = self.username_entry.value
@@ -1032,6 +1122,7 @@ class BastionPass(toga.App):
         await self.dialog(dialog)
         return None
 
+    @log_function
     async def get_password(self, _):
         service = self.service_entry.value
         username = self.username_entry.value
@@ -1117,6 +1208,7 @@ class BastionPass(toga.App):
         await self.dialog(dialog)
         return None
 
+    @log_function
     async def delete_username(self, _):
         service = self.service_entry.value
         username = self.username_entry.value
@@ -1192,6 +1284,7 @@ class BastionPass(toga.App):
 
         return await self.dialog(dialog)
 
+    @log_function
     async def delete_service(self, _):
         service = self.service_entry.value
         user_data = load_user_data(password_file_path=self.data_file_path)
@@ -1255,39 +1348,19 @@ class BastionPass(toga.App):
 
         return await self.dialog(dialog)
 
+    @log_function
     async def generate_password(self, _):
         new_password = secrets.token_urlsafe(20)
         self.service_password_entry.value = new_password
-        print(self.service_password_entry.value)
 
+    @log_function
     async def create_backup_phrase(self, _):
-        # user_data = load_user_data(password_file_path=self.data_file_path)
-        #
-        # if user_data == "Invalid data saved":
-        #     dialog = toga.ErrorDialog(
-        #         title=self.error_title,
-        #         message="Failed to create backup phrase. Cannot load user data"
-        #     )
-        #
-        #     await self.dialog(dialog)
-        #     return None
-        #
-        # elif user_data == "Password file path doesn't exist":
-        #     dialog = toga.ErrorDialog(
-        #         title=self.error_title,
-        #         message="Failed to create backup phrase. User data file doesn't exist"
-        #     )
-        #
-        #     await self.dialog(dialog)
-        #     return None
-
         try:
             dialog = toga.SaveFileDialog(
                 title="Main key backup phrase save path",
                 suggested_filename="bastionpass_backup_phrase.json",
                 file_types=["json"]
             )
-
             file_path = await self.dialog(dialog)
 
         except NotImplemented:
@@ -1301,7 +1374,6 @@ class BastionPass(toga.App):
                 title=self.success_title,
                 message="Canceled backup phrase creation"
             )
-
             return await self.dialog(dialog)
 
         main_key: str = get_main_key()
@@ -1310,8 +1382,6 @@ class BastionPass(toga.App):
                 self.data_file_path
             )["key"].encode()
         )
-
-        print(main_key)
 
         main_backup_phrase = create_backup_phrase(
             phrase=main_key,
@@ -1327,7 +1397,6 @@ class BastionPass(toga.App):
         for word in main_backup_phrase:
             word = word.replace(" ", "")
             word += "/"
-
             phrase_copy_safe.append(word)
             print(word)
 
@@ -1370,9 +1439,8 @@ class BastionPass(toga.App):
             with open(Path(file_path), mode="w") as back_file:
                 json.dump(writable_backup_phrase, back_file, indent=4)
 
-        print(self.main_window.size)
-
         if able_to_save_to_file is False:
+
             next_button = toga.Button(
                 text="Continue to home",
                 on_press=self.return_to_home_screen,
@@ -1398,6 +1466,7 @@ class BastionPass(toga.App):
 
     # --------------------- Utility related functions ---------------------#
 
+    @log_function
     async def validate_values(self, to_validate: dict, message_for_dialog: str or None, expected_value: str = "",
                               dialog_to_raise=None, inverse_check: bool = False):
         """
@@ -1426,14 +1495,13 @@ class BastionPass(toga.App):
                     title=self.error_title,
                     message=message_for_dialog.replace("<value>", variable)
                 )
+
             if inverse_check is False and variable_value != expected_value:
                 await self.dialog(dialog_to_raise)
-
                 return False
 
             if inverse_check is True and variable_value == expected_value:
                 await self.dialog(dialog_to_raise)
-
                 return False
 
             if message_for_dialog is not None:
@@ -1441,7 +1509,8 @@ class BastionPass(toga.App):
 
         return True
 
-    def get_server_details(self, _):
+    @log_function
+    async def get_server_details(self, _=None):
         server_port = os.environ["PORT"]
         available_addresses = [psutil.net_if_addrs()[interface][0].address for interface in psutil.net_if_addrs()]
 
@@ -1464,7 +1533,8 @@ class BastionPass(toga.App):
             clear_screen=True
         )
 
-    def trigger_offset_data(self, _, ready_to_offset=False):
+    @log_function
+    async def trigger_offset_data(self, _, ready_to_offset=False):
         print(f"Ready to offset is: {ready_to_offset}")
 
         if ready_to_offset is True:
@@ -1512,7 +1582,8 @@ class BastionPass(toga.App):
             clear_screen=True
         )
 
-    def trigger_deoffset_data(self, _, ready_to_offset=False):
+    @log_function
+    async def trigger_deoffset_data(self, _, ready_to_offset=False):
         print(f"Ready to offset is: {ready_to_offset}")
 
         if ready_to_offset is True:
@@ -1572,6 +1643,7 @@ class BastionPass(toga.App):
 
     # --------------------- Migration related functions --------------------- #
 
+    @log_function
     async def import_from_file(self, _=None, show_path_dialog: bool=False, save_passwords: bool=False):
         if show_path_dialog:
 
@@ -1582,6 +1654,7 @@ class BastionPass(toga.App):
 
             file_path: Path = await self.dialog(file_path_dialog)
 
+            self.logger.debug("Running util import_from_file")
             imported_data = import_from_file(
                 path=file_path,
                 file_pattern=self.data_pattern_input.value.split("\n")
@@ -1754,7 +1827,7 @@ class BastionPass(toga.App):
 
             await self.dialog(dialog)
 
-            return self.return_to_home_screen()
+            return await self.return_to_home_screen()
 
         else:
             pattern_label = toga.Label(
@@ -1763,7 +1836,7 @@ class BastionPass(toga.App):
             )
 
             self.data_pattern_input = toga.MultilineTextInput(
-                placeholder="service\nusername\npassword",
+                placeholder="header\nservice\nusername\npassword",
                 style=self.input_style
             )
 
@@ -1785,6 +1858,7 @@ class BastionPass(toga.App):
                 clear_screen=True
             )
 
+    @log_function
     async def send_data(self, _, ready_to_send: bool = False):
         if ready_to_send is False:
             address_label = toga.Label(
@@ -1861,7 +1935,8 @@ class BastionPass(toga.App):
             else:
                 print(f"COMMAND SEND ADDRESS {self.address_input.value} PORT {os.environ['PORT']} PATH {self.data_file_path} DONE")
 
-    def send_required_input(self, _=None, input_message: str="", function_requiring_input: str="", param_name: str=""):
+    @log_function
+    async def send_required_input(self, _=None, input_message: str="", function_requiring_input: str="", param_name: str=""):
         print("Send required input called")
         if input_message == "":
             print(f"param_name is: {param_name}")
@@ -1905,7 +1980,8 @@ class BastionPass(toga.App):
                 clear_screen=True
             )
 
-    def display_gui_message(self, gui_message: str):
+    @log_function
+    async def display_gui_message(self, gui_message: str):
         # return exec(f"await self.dialog(toga.{dialog_type.title()}Dialog(title={self.success_title}, message={gui_message}))")
 
         message_label = toga.Label(
@@ -1929,6 +2005,8 @@ class BastionPass(toga.App):
         )
 
     # --------------------- Background functions --------------------- #
+
+    @log_function
     async def server_message_listener(self):
         message_complete: bool = False
         message_from_server: str = ""
@@ -2018,10 +2096,14 @@ class BastionPass(toga.App):
                 continue
 
     # --------------------- Handler functions --------------------- #
-    def on_close_handler(self, *args, **kwargs) -> bool:
+
+    @log_function
+    async def on_close_handler(self, *args, **kwargs) -> bool:
         print("on_close_handler called")
+        self.logger.info("Shutting down app...")
 
         window_can_close: bool
+        logging.shutdown()
 
         if self.logged_in_user:
             self.server_queue.put("SHUTDOWN")

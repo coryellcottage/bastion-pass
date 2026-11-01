@@ -1,3 +1,4 @@
+import logging
 import os
 import toga
 import json
@@ -80,6 +81,8 @@ offset_data = [
         "!",
         " "
     ]
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 
 def recover_key(backup_phrase: list) -> str:
     recovered_key = ""
@@ -404,16 +407,11 @@ def import_from_file(path: Path, file_pattern: list):
         file_data = import_file.read().split("\n")
 
     pattern_header: str = ""
-    pattern_footer: str = ""
 
     for pattern_item in file_pattern:
         if "header" in pattern_item:
             pattern_header: str = str(pattern_item.split(" ")[1:]).replace("[", "").replace("]", "").replace(",", "").replace("'", "")
-            break
-
-    for pattern_item in file_pattern:
-        if "footer" in pattern_item:
-            pattern_footer = str(pattern_item.split(" ")[1:]).replace("[", "").replace("]", "").replace(",", "").replace("'", "")
+            del file_pattern[file_pattern.index(f"header {pattern_header}")]
             break
 
     ready_to_continue: bool = False
@@ -425,31 +423,43 @@ def import_from_file(path: Path, file_pattern: list):
     imported_data: dict = {}
     position_in_pattern: int = 0
 
+    logger.debug("Entering for loop.")
     for line in file_data:
         print(f"Ready to continue value: {ready_to_continue}")
         print(f"Header value: {pattern_header}")
-        print(f"Footer value: {pattern_footer}")
         print(f"Line value: {line}")
 
         print(f"Header isn't empty string: {pattern_header != ''}")
         print(f"Line is equal in header: {str(line) == str(pattern_header)}")
         print(f"Header isn't an empty string and line equals header: {pattern_header != "" and line == pattern_header}")
 
-        if pattern_header != "" and line == pattern_header:
+        logger.debug("Determining whether or not to continue")
+        logger.debug(f"Pattern header is: {pattern_header} and line is: {line}")
+        if pattern_header != "" and line == pattern_header and ready_to_continue is False:
             # Header has been supplied and header has been reached in file
+            logger.debug("Entered first condition.")
             ready_to_continue = True
             continue
 
-        elif pattern_header == "":
+        elif pattern_header == "" and ready_to_continue is False:
+            logger.debug("Entered second condition.")
             # No header has been supplied, rely on ignore to determine what lines to ignore
             ready_to_continue = True
 
-        elif pattern_header != "" and line != pattern_header:
+        elif pattern_header != "" and line != pattern_header and ready_to_continue is False:
+            logger.debug("Entered third condition.")
             # Header has been supplied, but not reached yet
             continue
 
         else:
-            continue
+            print(f"Pattern header is: {pattern_header} and line is: {line}")
+            logger.debug(f"Enter else statement.")
+
+            if not ready_to_continue:
+                continue
+
+        print(f"Checking if script is ready: {ready_to_continue}")
+        logger.debug(f"Checking if script is ready: {ready_to_continue}")
 
         if ready_to_continue:
             line_role = file_pattern[position_in_pattern]
@@ -457,14 +467,18 @@ def import_from_file(path: Path, file_pattern: list):
             print("Line role: " + line_role)
             print("Line is: " + line)
 
+            logger.debug("Line role: " + line_role)
+            logger.debug("Line is: " + line)
+
             if position_in_pattern + 1 == len(file_pattern):
                 position_in_pattern = 0
 
             else:
                 position_in_pattern += 1
 
-            if line_role == "ignore":
+            if line_role == "ignore" or line == pattern_header:
                 print(f"Imported data so far is: {imported_data}")
+                logger.debug(f"Imported data so far is: {imported_data}")
 
                 service = ""
                 username = ""
@@ -478,19 +492,17 @@ def import_from_file(path: Path, file_pattern: list):
                 elif line_role == "password":
                     password = line
 
-                    # Footer has not been supplied or footer has been supplied and reached
-                    if pattern_footer == "" or (pattern_footer != "" and line == pattern_footer):
-                        if service not in imported_data.keys():
-                            imported_data[service] = {
-                                username: password
-                            }
-
-                        else:
-                            imported_data[service][username] = password
+                    # Header has not been supplied or header has been supplied and reached
+                    if service not in imported_data.keys():
+                        imported_data[service] = {
+                            username: password
+                        }
 
                     else:
-                        ready_to_continue = False
-                        continue
+                        imported_data[service][username] = password
+
+                    ready_to_continue = False
+                    continue
 
     return imported_data
 
