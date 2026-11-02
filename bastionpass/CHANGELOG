@@ -19,3 +19,4 @@
 * Fix log messages not showing up in log file
 * Hide asyncio and keyring debug log messages
 * Fix import from file functionality to work with headers
+* Add reset password functionality to GUI, and require login before use

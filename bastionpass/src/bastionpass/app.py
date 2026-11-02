@@ -1,13 +1,6 @@
 """
 A cross-platform password manager written in python
 """
-import datetime
-import functools
-import inspect
-
-import toga
-# import json
-# import random
 
 # Data Structure
 
@@ -37,11 +30,13 @@ import toga
 from toga.style import Pack
 
 # App related imports
-import logging
+
 import os.path
 import asyncio
 import secrets
+import inspect
 import textwrap
+import datetime
 import traceback
 from .utils import *
 import cryptography.fernet
@@ -219,6 +214,13 @@ class BastionPass(toga.App):
             order=2
         )
 
+        reset_password_command = toga.Command(
+            action=self.reset_password_command,
+            group=password_group,
+            text="Reset User password",
+            order=4
+        )
+
         trigger_offset_command = toga.Command(
             action=self.trigger_offset_data,
             group=offset_group,
@@ -281,6 +283,7 @@ class BastionPass(toga.App):
         self.commands.add(trigger_offset_command)
         self.commands.add(trigger_deoffset_command)
         self.commands.add(return_to_home_command)
+        self.commands.add(reset_password_command)
 
         self.paths.data.mkdir(parents=True, exist_ok=True)
         self.paths.logs.mkdir(parents=True, exist_ok=True)
@@ -839,73 +842,108 @@ class BastionPass(toga.App):
 
     # --------------------- Password related functions --------------------- #
     @log_function
-    async def reset_password(self, _=None):
-        encryption_key = Fernet.generate_key()
-        new_password = self.password_entry.value
-        data_path = Path(self.paths.data, self.user_entry.value, ".passwords.json")
-        user_passwords = load_user_data(password_file_path=data_path)
-
-        if user_passwords == "":
-            dialog = toga.QuestionDialog(
-                title=self.confirm_title,
-                message="Unable to load any of the saved passwords under the selected user. You can still reset your password, but you will lose all your saved passwords. Do you wish to continue?"
+    async def reset_password(self, _=None, password_ready:bool=False):
+        if not password_ready:
+            new_password_label = toga.Label(
+                text="Please enter your new password below: ",
+                style=self.label_style
             )
 
-            dialog_result = await self.dialog(dialog)
+            self.new_password_input = toga.TextInput(style=self.input_style)
 
-            if not dialog_result:
-                dialog = toga.InfoDialog(
-                    title=self.warning_title,
-                    message="You have opted to not reset your user password in light of the login data being corrupt. You will not be able to login to this user without resetting the password first"
+            submit_button = toga.Button(
+                text="Submit New Password",
+                style=self.button_style,
+                on_press=partial(self.reset_password, password_ready=True)
+            )
+
+            add_to_screen(
+                widgets_to_add=(
+                    new_password_label,
+                    self.new_password_input,
+                    submit_button
+                ),
+                box_to_add_to=self.a_box,
+                clear_screen=True
+            )
+
+        if password_ready:
+            new_password = self.new_password_input.value
+            encryption_key = Fernet.generate_key()
+            data_path = Path(self.paths.data, self.user_entry.value, ".passwords.json")
+            user_passwords = load_user_data(password_file_path=data_path)
+
+            if user_passwords == "Invalid data saved":
+                dialog = toga.QuestionDialog(
+                    title=self.confirm_title,
+                    message="Unable to load any of the saved passwords under the selected user. You can still reset your password, but you will lose all your saved passwords. Do you wish to continue?"
                 )
 
-                return await self.dialog(dialog)
+                dialog_result = await self.dialog(dialog)
 
-        elif not isinstance(user_passwords, dict):
-            dialog = toga.ErrorDialog(
-                title=self.error_title,
-                message=f"An unknown case occurred while trying to read the selected user's passwords. The unknown case is: {user_passwords}. Canceling..."
+                if not dialog_result:
+                    dialog = toga.InfoDialog(
+                        title=self.warning_title,
+                        message="You have opted to not reset your user password in light of the login data being corrupt. You will not be able to login to this user without resetting the password first"
+                    )
+
+                    return await self.dialog(dialog)
+
+            elif user_passwords == "Password file path doesn't exist":
+                dialog = toga.ErrorDialog(
+                    title=self.error_title,
+                    message="Unable to reset password. Selected password path doesn't exist."
+                )
+
+                await self.dialog(dialog)
+                return await self.return_to_home_screen(logged_in=hasattr(self, "logged_in_user") and self.logged_in_user != "")
+
+            elif not isinstance(user_passwords, dict):
+                dialog = toga.ErrorDialog(
+                    title=self.error_title,
+                    message=f"An unknown case occurred while trying to read the selected user's passwords. The unknown case is: {user_passwords}. Canceling..."
+                )
+
+                await self.dialog(dialog)
+                return await self.return_to_home_screen(logged_in=hasattr(self, "logged_in_user") and self.logged_in_user != "")
+
+            if new_password == "":
+                dialog = toga.ErrorDialog(
+                    title=self.error_title,
+                    message="Cannot reset password. New Password not given."
+                )
+
+                await self.dialog(dialog)
+                return await self.return_to_home_screen(logged_in=hasattr(self, "logged_in_user") and self.logged_in_user != "")
+
+            encrypted_password = encrypt_data(data_to_encrypt=new_password, key_to_use=encryption_key.decode())
+            encrypted_key = encrypt_data(data_to_encrypt=encryption_key)
+
+            if encrypted_key["iv_used"] is None:
+                user_data = {
+                    self.user_entry.value: encrypted_password["encrypted_data"].decode(),
+                    "key": encrypted_key["encrypted_data"].decode(),
+                    "data": user_passwords["data"]
+                }
+
+            else:
+                user_data = {
+                    self.user_entry.value: encrypted_password["encrypted_data"].decode(),
+                    "key": encrypted_key["encrypted_data"].decode(),
+                    "iv": encrypted_key["iv_used"],
+                    "data": user_passwords["data"]
+                }
+
+            with open(data_path, mode="w") as passwords_file:
+                json.dump(user_data, passwords_file, indent=4)
+
+            dialog = toga.InfoDialog(
+                title=self.success_title,
+                message="Successfully reset password. You should now be able to login using the new password."
             )
 
             await self.dialog(dialog)
-            return self.return_to_home_screen(logged_in=False)
-
-        if new_password == "":
-            dialog = toga.ErrorDialog(
-                title=self.error_title,
-                message="Cannot reset password. New Password not given."
-            )
-
-            return await self.dialog(dialog)
-
-        encrypted_password = encrypt_data(data_to_encrypt=new_password, key_to_use=encryption_key.decode())
-        encrypted_key = encrypt_data(data_to_encrypt=encryption_key)
-
-        if encrypted_key["iv_used"] is None:
-            user_data = {
-                self.user_entry.value: encrypted_password["encrypted_data"].decode(),
-                "key": encrypted_key["encrypted_data"].decode(),
-                "data": user_passwords["data"]
-            }
-
-        else:
-            user_data = {
-                self.user_entry.value: encrypted_password["encrypted_data"].decode(),
-                "key": encrypted_key["encrypted_data"].decode(),
-                "iv": encrypted_key["iv_used"],
-                "data": user_passwords["data"]
-            }
-
-        with open(data_path, mode="w") as passwords_file:
-            json.dump(user_data, passwords_file, indent=4)
-
-        dialog = toga.InfoDialog(
-            title=self.success_title,
-            message="Successfully reset password. You should now be able to login using the new password."
-        )
-
-        await self.dialog(dialog)
-        return self.return_to_home_screen(logged_in=False)
+            return await self.return_to_home_screen(logged_in=hasattr(self, "logged_in_user") and self.logged_in_user != "")
 
     @log_function
     async def add_password(self, _):
@@ -1460,6 +1498,19 @@ class BastionPass(toga.App):
             dialog = toga.InfoDialog(
                 title=self.success_title,
                 message=f"Successfully created backup phrase. It has been saved to this file: \n\n{file_path}"
+            )
+
+            return await self.dialog(dialog)
+
+    async def reset_password_command(self, _=None):
+        if hasattr(self, "logged_in_user") and not self.logged_in_user is None:
+            print(f"Is logged in: {hasattr(self, 'logged_in_user') and not self.logged_in_user is None}")
+            return await self.reset_password()
+
+        else:
+            dialog = toga.ErrorDialog(
+                title=self.error_title,
+                message="Can't reset password for logged in user. You must be logged in first."
             )
 
             return await self.dialog(dialog)
